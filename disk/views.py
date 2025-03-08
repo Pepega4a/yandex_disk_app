@@ -1,3 +1,5 @@
+from django.core.cache import cache
+import logging
 import os
 import requests
 import urllib.parse
@@ -9,6 +11,7 @@ from django.conf import settings
 from .yandex_api import get_files_from_public_link
 from typing import List, Dict, Any
 
+logger = logging.getLogger(__name__)
 
 def index(request):
     """
@@ -26,6 +29,12 @@ def get_files(request):
 
     if not public_key:
         return JsonResponse({'error': 'No public key provided'}, status=400)
+
+    cache_key = f"yandex_files:{public_key}:{path}"
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        logger.info(f"Загрузка из кэша: {cache_key}")
+        return JsonResponse(cached_data)
 
     files_data = get_files_from_public_link(public_key, path)
 
@@ -56,13 +65,15 @@ def get_files(request):
                     'file': item.get('file', None),
                     'extension': file_ext
                 })
-
-    return JsonResponse({
+    response_data = {
         'files': file_list,
         'folders': folder_list,
         'current_folder': current_folder,
         'available_types': list(available_extensions)
-    })
+    }
+
+    cache.set(cache_key, response_data, settings.CACHE_TTL)
+    return JsonResponse(response_data)
 
 
 
