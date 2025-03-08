@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Яндекс.Диск API</title>
+    <script>
+        let allFiles = [];
+        let allFolders = [];
+        let currentPath = "";
+        let currentFolder = "Главная";
+
+        function fetchFiles(path = "") {
+            let publicKey = document.getElementById('public_key').value;
+
+            if (!publicKey) {
+                alert("Введите публичную ссылку!");
+                return;
+            }
+
+            fetch(`/get_files/?public_key=${publicKey}&path=${encodeURIComponent(path)}`)
+                .then(response => response.json())
+                .then(data => {
+
+                    if (data.hasOwnProperty('error')) {
+                        alert(`${data['error']}`)
+                        return;
+                    }
+
+                    allFiles = data.files;
+                    allFolders = data.folders;
+                    currentPath = path;
+                    currentFolder = data.current_folder;
+                    
+                    updateNavigation();
+                    updateFileList();
+                    updateFolderList();
+
+                    let typeSelect = document.getElementById('file_type');
+                    typeSelect.innerHTML = '<option value="">Все</option>';
+
+                    let fileTypes = new Set(allFiles.map(file => file.extension));
+                    fileTypes.forEach(type => {
+                        typeSelect.innerHTML += `<option value="${type}">${type}</option>`;
+                    });
+
+                    document.getElementById('file_type_container').style.display = 'block';
+                    document.getElementById('download_section').style.display = 'block';
+                    document.getElementById('current_folder').style.display = 'block'
+                })
+                .catch(error => console.error("Ошибка:", error));
+        }
+
+        function updateNavigation() {
+            let nav = document.getElementById('current_folder');
+            nav.innerHTML = `<span>📁 ${currentFolder}</span>`;
+        }
+
+        function updateFileList() {
+            let fileType = document.getElementById('file_type').value;
+            let filteredFiles = allFiles.filter(file => fileType === "" || file.extension === fileType);
+
+            let output = "<ul>";
+            if (filteredFiles.length > 0) {
+                filteredFiles.forEach(item => {
+                    let fileLink = item.file ? `<a href="#" onclick="downloadFile('${item.file}', '${item.name}')">Скачать</a>` : 'Нет ссылки';
+                    output += `<li><input type="checkbox" class="file-checkbox" value="${item.file}" data-name="${item.name}"> ${item.name} - ${fileLink}</li>`;
+                });
+            } else {
+                output += "<li>Файлы не найдены</li>";
+            }
+            output += "</ul>";
+            document.getElementById('file_list').innerHTML = output;
+        }
+
+        function updateFolderList() {
+            let output = "<ul>";
+            if (currentPath !== "") {
+                output += `<li><a href="#" onclick="fetchFiles('')">⬆ Назад</a></li>`;
+            }
+
+            allFolders.forEach(folder => {
+                output += `<li><a href="#" onclick="fetchFiles('${folder.path}')">📁 ${folder.name}</a></li>`;
+            });
+
+            output += "</ul>";
+            document.getElementById('folder_list').innerHTML = output;
+        }
+
+        function downloadFile(url, name) {
+            if (!url) {
+                alert("Файл не доступен для скачивания!");
+                return;
+            }
+            window.location.href = `/download/?file_url=${encodeURIComponent(url)}&file_name=${encodeURIComponent(name)}`;
+        }
+
+        function downloadSelectedFiles() {
+            let selectedFiles = [];
+            let selectedNames = [];
+            document.querySelectorAll('.file-checkbox:checked').forEach(checkbox => {
+                if (checkbox.value) {
+                    selectedFiles.push(checkbox.value);
+                    selectedNames.push(checkbox.getAttribute("data-name"));
+                }
+            });
+
+            if (selectedFiles.length === 0) {
+                alert("Выберите файлы для скачивания!");
+                return;
+            }
+
+            let url = new URL('/download_multiple/', window.location.origin);
+            selectedFiles.forEach((file, index) => {
+                url.searchParams.append(`file_urls[]`, file);
+                url.searchParams.append(`file_names[]`, selectedNames[index]);
+            });
+
+            window.location.href = url.href;
+        }
+
+        function clearSelection() {
+            document.querySelectorAll('.file-checkbox').forEach(checkbox => {
+                checkbox.checked = false;
+            });
+        }
+
+        function selectAllFiles() {
+            document.querySelectorAll('.file-checkbox').forEach(checkbox => {
+                checkbox.checked = true;
+            });
+        }
+    </script>
+</head>
+<body>
+    <h1>Просмотр файлов на Яндекс.Диске</h1>
+    <input type="text" id="public_key" placeholder="Введите публичную ссылку">
+    <button onclick="fetchFiles()">Получить файлы</button>
+
+    <div id="current_folder" style="display: none;"></div>
+
+    <div id="file_type_container" style="display: none;">
+        <label for="file_type">Фильтр по типу:</label>
+        <select id="file_type" onchange="updateFileList()">
+            <option value="">Все</option>
+        </select>
+    </div>
+
+    <div id="folder_list"></div>
+    <div id="file_list"></div>
+
+    <div id="download_section" style="display: none;">
+        <button onclick="downloadSelectedFiles()">Скачать выбранные файлы</button>
+        <button onclick="selectAllFiles()">Выделить всё</button>
+        <button onclick="clearSelection()">Очистить выделенные файлы</button>
+    </div>
+</body>
+</html>
